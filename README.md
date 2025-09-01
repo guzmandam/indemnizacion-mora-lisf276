@@ -17,7 +17,7 @@ Este servicio calcula la indemnización por mora conforme al Artículo 276 de la
 ## Instalación
 
 ```bash
-pip install httpx typer pandas
+pip install -r requirements.txt
 ```
 
 ## Uso
