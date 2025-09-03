@@ -164,6 +164,10 @@ def calculate_mora_interest(
     phi_cum = Decimal('1.0')
     total_days = 0
     
+    # Denominación inicial en UDI
+    U0 = Decimal(str(p0_mxn)) / Decimal(str(udi_t0))  # P0_mxn / UDI_t0
+    U_prev = U0  # Saldo en UDI al inicio del período
+    
     for month_data in monthly_partitions:
         month_key = month_data["month"]
         d_j = month_data["days"]  # Días en mora para este mes
@@ -200,6 +204,13 @@ def calculate_mora_interest(
         r_d_j = r_a_j / Decimal('365')  # r_a_j / 365
         F_j = Decimal('1') + r_d_j * Decimal(str(d_j))  # 1 + r_d_j * d_j
         
+        # Calcular interés mensual en UDI
+        interest_udi_month = U0 * (F_j - Decimal('1'))  # Interés generado este mes en UDI
+        interest_mxn_month = float(interest_udi_month * Decimal(str(udi_tf)))  # Convertir a MXN usando UDI de tf
+        
+        # Actualizar saldo en UDI
+        U_current = U0 * F_j
+        
         # Actualizar factor acumulado
         phi_cum *= F_j
         
@@ -213,11 +224,19 @@ def calculate_mora_interest(
             "r_a_j": float(r_a_j),
             "r_d_j": float(r_d_j),
             "F_j": float(F_j),
-            "Phi_cum": float(phi_cum)
+            "Phi_cum": float(phi_cum),
+            "interest_udi_month": float(interest_udi_month),
+            "interest_mxn_month": round(interest_mxn_month, 2)
         })
+        
+        # Actualizar saldo para el siguiente mes
+        U_prev = U_current
+
+    monthly_breakdown_df = pd.DataFrame(monthly_breakdown)
+    sum_monthly_int_udi = monthly_breakdown_df["interest_udi_month"].sum()
+    sum_monthly_int_udi_mxn = monthly_breakdown_df["interest_mxn_month"].sum()
     
     # Denominación en UDI y actualización
-    U0 = Decimal(str(p0_mxn)) / Decimal(str(udi_t0))  # P0_mxn / UDI_t0
     Phi = phi_cum  # Producto acumulado de factores mensuales
     Ufin = U0 * Phi  # U0 * Phi
     
@@ -229,14 +248,14 @@ def calculate_mora_interest(
     # Redondear a 2 decimales para valores finales en MXN
     P_upd_mxn = round(P_upd_mxn, 2)
     interest_mxn = round(interest_mxn, 2)
-    total_mxn = round(total_mxn, 2)
+    total_mxn = sum_monthly_int_udi_mxn + P_upd_mxn#round(total_mxn, 2)
     
     return {
         "n_periods": len(monthly_breakdown),
         "total_days": total_days,
         "Phi": float(Phi),
         "P_upd_mxn": P_upd_mxn,
-        "interest_mxn": interest_mxn,
+        "interest_mxn": sum_monthly_int_udi_mxn,
         "total_mxn": total_mxn,
         "monthly_breakdown": monthly_breakdown,
         "U0": float(U0),
@@ -288,9 +307,9 @@ def calcular(
         print(f"- Total a pagar: ${result['total_mxn']:.2f} MXN")
         
         print(f"\nDesglose mensual:")
-        print(f"{'Mes':<10} {'Días':<6} {'CCP(%)':<8} {'r_a_j':<8} {'r_d_j':<12} {'F_j':<12} {'Phi_cum':<12}")
+        print(f"{'Mes':<10} {'Días':<6} {'CCP(%)':<8} {'r_a_j':<8} {'r_d_j':<12} {'F_j':<12} {'Phi_cum':<12} {'Int_UDI':<12} {'Int_MXN':<12}")
         for month in result['monthly_breakdown']:
-            print(f"{month['month']:<10} {month['d_j']:<6} {month['ccp_pct']:<8.4f} {month['r_a_j']:<8.6f} {month['r_d_j']:<12.10f} {month['F_j']:<12.10f} {month['Phi_cum']:<12.10f}")
+            print(f"{month['month']:<10} {month['d_j']:<6} {month['ccp_pct']:<8.4f} {month['r_a_j']:<8.6f} {month['r_d_j']:<12.10f} {month['F_j']:<12.10f} {month['Phi_cum']:<12.10f} {month['interest_udi_month']:<12.10f} ${month['interest_mxn_month']:<11.2f}")
             
     except Exception as e:
         print(f"Error: {e}")
